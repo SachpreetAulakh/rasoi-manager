@@ -1,683 +1,622 @@
 import streamlit as st
 import json
 import uuid
-import time
+import os
 from datetime import datetime
 from data import CATEGORIES, CATEGORY_COLORS, UNITS, INDIAN_STAPLES, STARTER_ITEMS, RECIPES
 
-# ─────────────────────────────────────────────
-#  PAGE CONFIG
-# ─────────────────────────────────────────────
 st.set_page_config(
     page_title="Rasoi Manager 🍛",
     page_icon="🍛",
-    layout="wide",
-    initial_sidebar_state="expanded",
+    layout="centered",
+    initial_sidebar_state="collapsed",
 )
 
-# ─────────────────────────────────────────────
-#  CUSTOM CSS  — edit colors here
-# ─────────────────────────────────────────────
 st.markdown("""
 <style>
-/* ── Google Font ── */
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+html, body, [class*="css"] { font-family: 'Plus Jakarta Sans', sans-serif; background: #F7F3FF; }
 
-html, body, [class*="css"] {
-    font-family: 'Plus Jakarta Sans', sans-serif;
+/* Hide sidebar & chrome */
+[data-testid="stSidebar"],
+[data-testid="collapsedControl"],
+[data-testid="stSidebarToggle"],
+.st-emotion-cache-1rtdyuf,
+.st-emotion-cache-pkbazv { display: none !important; }
+#MainMenu, footer, header { visibility: hidden; }
+.stDeployButton { display: none !important; }
+
+/* Content area */
+.main .block-container {
+    padding: 0 10px 100px 10px !important;
+    max-width: 480px !important;
+    margin: 0 auto !important;
 }
 
-/* ── Sidebar ── */
-[data-testid="stSidebar"] {
-    background: #3D2DB5 !important;
+/* Top bar */
+.top-bar {
+    background: #3D2DB5;
+    margin: 0 -10px 16px -10px;
+    padding: 14px 18px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
 }
-[data-testid="stSidebar"] * {
-    color: white !important;
-}
-[data-testid="stSidebar"] .stRadio label {
-    font-size: 15px !important;
-    padding: 6px 0 !important;
+.top-bar-title { color: white; font-size: 18px; font-weight: 700; margin: 0; }
+.top-bar-sub   { color: rgba(255,255,255,0.72); font-size: 12px; margin: 2px 0 0; }
+.top-bar-user  {
+    background: rgba(255,255,255,0.2); border-radius: 20px;
+    padding: 4px 12px; color: white; font-size: 12px; font-weight: 500;
 }
 
-/* ── Metric cards ── */
-[data-testid="stMetric"] {
-    background: #EEECFF;
-    border-radius: 14px;
-    padding: 16px !important;
-    border: 1px solid rgba(61,45,181,0.15);
+/* ── Bottom nav container ── */
+.nav-wrapper {
+    position: fixed;
+    bottom: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 100%; max-width: 480px;
+    background: white;
+    border-top: 1.5px solid rgba(61,45,181,0.12);
+    box-shadow: 0 -4px 20px rgba(61,45,181,0.1);
+    z-index: 999;
+    padding: 4px 0 8px;
 }
-[data-testid="stMetricLabel"] { color: #3D2DB5 !important; font-weight: 600 !important; }
-[data-testid="stMetricValue"] { color: #3D2DB5 !important; }
 
-/* ── Buttons ── */
-.stButton > button {
+/* Style the Streamlit columns inside nav */
+.nav-wrapper [data-testid="column"] {
+    padding: 0 2px !important;
+}
+
+/* Nav buttons */
+.nav-wrapper .stButton > button {
+    width: 100% !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 12px !important;
+    padding: 6px 2px 4px !important;
+    font-size: 10px !important;
+    font-weight: 500 !important;
+    color: #AAA0BB !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 2px !important;
+    min-height: 52px !important;
+    box-shadow: none !important;
+}
+.nav-wrapper .stButton > button:hover {
+    background: #F0ECFF !important;
+    color: #3D2DB5 !important;
+}
+
+/* Active nav button override — we use a data attr trick via class */
+div[data-nav-active="true"] .stButton > button {
+    color: #3D2DB5 !important;
+    font-weight: 700 !important;
+    background: #EEECFF !important;
+}
+
+/* General buttons */
+section.main .stButton > button {
     background: #3D2DB5 !important;
     color: white !important;
     border: none !important;
     border-radius: 10px !important;
     font-weight: 600 !important;
-    transition: opacity 0.15s !important;
 }
-.stButton > button:hover { opacity: 0.85 !important; }
-
-/* ── Item card ── */
-.item-card {
-    background: white;
-    border: 1px solid rgba(100,60,180,0.15);
-    border-radius: 14px;
-    padding: 14px 16px;
-    margin-bottom: 10px;
-}
-.item-card.low {
-    border-color: rgba(232,96,10,0.35);
-    background: #FFFAF7;
+section.main .stButton > button[kind="secondary"] {
+    background: white !important;
+    color: #3D2DB5 !important;
+    border: 1.5px solid rgba(61,45,181,0.3) !important;
 }
 
-/* ── Recipe card ── */
-.recipe-card {
-    background: white;
-    border: 1px solid rgba(100,60,180,0.15);
-    border-radius: 14px;
-    padding: 16px;
-    margin-bottom: 12px;
-    transition: box-shadow 0.2s;
+/* Stat grid */
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.stat-card { border-radius: 14px; padding: 14px 16px; border: 1px solid rgba(100,60,180,0.12); }
+.stat-lbl  { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing:.05em; margin-bottom:4px; }
+.stat-val  { font-size: 28px; font-weight: 700; line-height: 1.1; }
+
+/* Alert / item cards */
+.alert-card {
+    background: #FFF0E8; border: 1px solid rgba(232,96,10,.25);
+    border-radius: 12px; padding: 11px 13px; margin-bottom: 8px;
 }
-.recipe-card:hover { box-shadow: 0 2px 12px rgba(61,45,181,0.1); }
-
-/* ── Badges ── */
-.badge {
-    display: inline-block;
-    padding: 2px 10px;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-}
-.badge-low   { background: #FFF0E8; color: #B84800; }
-.badge-easy  { background: #E3F8F2; color: #085041; }
-.badge-medium{ background: #FFF8E1; color: #7A4800; }
-.badge-hard  { background: #FCE4EC; color: #880E4F; }
-.badge-have  { background: #EEECFF; color: #3D2DB5; }
-.badge-miss  { background: #FFF0E8; color: #B84800; }
-
-/* ── Progress bar override ── */
-.stProgress > div > div { background: #3D2DB5 !important; }
-
-/* ── Section title ── */
 .sec-title {
-    font-size: 17px;
-    font-weight: 700;
-    color: #1E1040;
-    margin: 20px 0 12px 0;
-    padding-bottom: 6px;
+    font-size: 15px; font-weight: 700; color: #1E1040;
+    margin: 16px 0 10px; padding-bottom: 5px;
     border-bottom: 2px solid #EEECFF;
 }
 
-/* ── Alert box ── */
-.alert-box {
-    background: #FFF0E8;
-    border: 1px solid rgba(232,96,10,0.3);
-    border-radius: 12px;
-    padding: 12px 16px;
-    margin-bottom: 8px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+/* Badges */
+.badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:600; }
+.badge-low    { background:#FFF0E8; color:#B84800; }
+.badge-easy   { background:#E3F8F2; color:#085041; }
+.badge-medium { background:#FFF8E1; color:#7A4800; }
+.badge-hard   { background:#FCE4EC; color:#880E4F; }
+.badge-have   { background:#EEECFF; color:#3D2DB5; }
+.badge-miss   { background:#FFF0E8; color:#B84800; }
+
+/* Cat icon */
+.cat-icon {
+    width:42px; height:42px; border-radius:10px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:20px; flex-shrink:0;
 }
 
-/* ── Shop item ── */
-.shop-item {
-    background: white;
-    border: 1px solid rgba(100,60,180,0.15);
-    border-radius: 12px;
-    padding: 12px 16px;
-    margin-bottom: 7px;
-}
+/* Login */
+.login-wrap { background:white; border-radius:20px; padding:28px 22px; border:1px solid rgba(100,60,180,.15); margin-top:12px; }
 
-/* ── Hide streamlit branding ── */
-#MainMenu, footer, header { visibility: hidden; }
-
-/* ── Expander ── */
-.streamlit-expanderHeader {
-    font-weight: 600 !important;
-    background: #F7F3FF !important;
-    border-radius: 10px !important;
+/* Inputs */
+.stTextInput input, .stNumberInput input, .stSelectbox > div > div {
+    border-color: rgba(100,60,180,.25) !important; border-radius:10px !important;
 }
-
-/* ── Selectbox / input ── */
-.stSelectbox > div > div, .stNumberInput > div > div > input, .stTextInput > div > div > input {
-    border-color: rgba(100,60,180,0.3) !important;
-    border-radius: 8px !important;
-}
+.stProgress > div > div { background: #3D2DB5 !important; }
+.streamlit-expanderHeader { background:#F0ECFF !important; border-radius:10px !important; font-weight:600 !important; }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────
-#  STATE MANAGEMENT
-# ─────────────────────────────────────────────
-def init_state():
-    if "pantry" not in st.session_state:
-        # Seed starter items on first load
-        starter = []
-        low_demo = {"Toor Dal", "Ghee", "Onions", "Tea Leaves"}
-        for s in INDIAN_STAPLES:
-            if s["name"] in STARTER_ITEMS:
-                item = s.copy()
-                item["id"] = str(uuid.uuid4())
-                item["added"] = datetime.now().isoformat()
-                if item["name"] in low_demo:
-                    item["qty"] = round(item["thresh"] * 0.4, 2)
-                starter.append(item)
-        st.session_state.pantry = starter
-
-    if "shopping" not in st.session_state:
-        st.session_state.shopping = []
-
-    if "page" not in st.session_state:
-        st.session_state.page = "🏠 Dashboard"
-
-
-def get_pantry():
-    return st.session_state.pantry
+# ─────────────────────────────────────
+#  CONFIG  ✏️ Edit to add households
+# ─────────────────────────────────────
+HOUSEHOLDS = {
+    "🏠 Aulakh Family":  {"password": "Khanakhazana@1826",  "color": "#E8600A"},
+    "🏡 Khangura Family": {"password": "Khangura123", "color": "#0D9E6E"},
+}
+MEMBERS = {
+    "🏠 Aulakh Family":  ["Sach", "Sukh", "Aayaan"],
+    "🏡 Khangura Family": ["Manpreet", "Honey", "Rabaab"],
+    }
+NAV = [
+    ("home",    "🏠", "Home"),
+    ("pantry",  "📦", "Pantry"),
+    ("shop",    "🛒", "Shop"),
+    ("recipes", "🍽️", "Recipes"),
+    ("add",     "➕", "Add"),
+]
+PAGE_META = {
+    "home":    ("🏠", "Dashboard",   "Your kitchen at a glance"),
+    "pantry":  ("📦", "Pantry",      "Manage your stock"),
+    "shop":    ("🛒", "Shopping",    "Your shopping list"),
+    "recipes": ("🍽️", "Recipes",     "What can you cook?"),
+    "add":     ("➕", "Add Item",    "Add to your pantry"),
+}
 
 
-def get_cat_info(cat_id):
-    return next((c for c in CATEGORIES if c["id"] == cat_id), {"label": cat_id, "emoji": "📦"})
+# ─────────────────────────────────────
+#  DATA HELPERS
+# ─────────────────────────────────────
+DATA_DIR = "data_store"
+os.makedirs(DATA_DIR, exist_ok=True)
 
+def dpath(hh, t):
+    safe = "".join(c for c in hh if c.isalnum() or c in "_-")
+    return os.path.join(DATA_DIR, f"{safe}_{t}.json")
 
-def is_low(item):
-    return item["qty"] <= item["thresh"]
+def load_j(path, default):
+    try:
+        if os.path.exists(path):
+            with open(path) as f: return json.load(f)
+    except: pass
+    return default
 
+def save_j(path, obj):
+    with open(path, "w") as f: json.dump(obj, f, indent=2)
 
-def sync_shopping():
-    """Auto-add low stock items to shopping list."""
-    pantry = get_pantry()
-    shop = st.session_state.shopping
-    existing_sources = {s["source_id"] for s in shop if s.get("auto")}
-    low_ids = {i["id"] for i in pantry if is_low(i)}
+def save_pantry():   save_j(dpath(st.session_state.household, "pantry"),   st.session_state.pantry)
+def save_shopping(): save_j(dpath(st.session_state.household, "shopping"), st.session_state.shopping)
 
-    # Add newly low items
+def get_cat(cid): return next((c for c in CATEGORIES if c["id"] == cid), {"label": cid, "emoji": "📦"})
+def is_low(item): return item["qty"] <= item["thresh"]
+
+def sync_shop():
+    pantry, shop = st.session_state.pantry, st.session_state.shopping
+    existing = {s["source_id"] for s in shop if s.get("auto")}
+    low_ids  = {i["id"] for i in pantry if is_low(i)}
     for item in pantry:
-        if is_low(item) and item["id"] not in existing_sources:
-            shop.append({
-                "id": str(uuid.uuid4()),
-                "name": item["name"],
-                "cat": item["cat"],
-                "auto": True,
-                "checked": False,
-                "source_id": item["id"],
-            })
+        if is_low(item) and item["id"] not in existing:
+            shop.append({"id": str(uuid.uuid4()), "name": item["name"],
+                         "cat": item["cat"], "auto": True, "checked": False,
+                         "source_id": item["id"],
+                         "added_by": st.session_state.get("member","")})
+    st.session_state.shopping = [s for s in shop if not s.get("auto") or s.get("source_id") in low_ids]
+    save_shopping()
 
-    # Remove auto items that are no longer low
-    st.session_state.shopping = [
-        s for s in shop
-        if not s.get("auto") or s.get("source_id") in low_ids
-    ]
+def seed(member):
+    low_demo = {"Toor Dal","Ghee","Onions","Tea Leaves"}
+    out = []
+    for s in INDIAN_STAPLES:
+        if s["name"] in STARTER_ITEMS:
+            item = {**s, "id": str(uuid.uuid4()),
+                    "added": datetime.now().isoformat(), "added_by": member}
+            if item["name"] in low_demo: item["qty"] = round(item["thresh"]*0.4, 2)
+            out.append(item)
+    return out
 
-
-# ─────────────────────────────────────────────
-#  SIDEBAR NAVIGATION
-# ─────────────────────────────────────────────
-def render_sidebar():
-    with st.sidebar:
-        st.markdown("## 🍛 Rasoi Manager")
-        st.markdown("*Your Indian kitchen pantry*")
-        st.markdown("---")
-
-        pages = ["🏠 Dashboard", "📦 Pantry", "🛒 Shopping List", "🍽️ Recipes", "➕ Add Item"]
-        page = st.radio("Navigate", pages, index=pages.index(st.session_state.page), label_visibility="collapsed")
-        st.session_state.page = page
-
-        st.markdown("---")
-        pantry = get_pantry()
-        low = [i for i in pantry if is_low(i)]
-        st.markdown(f"**{len(pantry)}** items in pantry")
-        if low:
-            st.markdown(f"⚠️ **{len(low)}** items low")
-        else:
-            st.markdown("✅ All stocked!")
-
-        st.markdown("---")
-        st.markdown("*Edit `data.py` to add recipes & ingredients*")
+def do_login(hh, member):
+    st.session_state.update({"logged_in":True,"household":hh,"member":member,"tab":"home"})
+    pantry = load_j(dpath(hh,"pantry"), [])
+    if not pantry:
+        pantry = seed(member)
+        save_j(dpath(hh,"pantry"), pantry)
+    st.session_state.pantry   = pantry
+    st.session_state.shopping = load_j(dpath(hh,"shopping"), [])
+    st.rerun()
 
 
-# ─────────────────────────────────────────────
-#  DASHBOARD PAGE
-# ─────────────────────────────────────────────
-def page_dashboard():
-    st.markdown("# 🏠 Dashboard")
-    st.markdown(f"*Good day! Here's your kitchen at a glance — {datetime.now().strftime('%d %B %Y')}*")
+# ─────────────────────────────────────
+#  TOP BAR
+# ─────────────────────────────────────
+def top_bar():
+    tab    = st.session_state.get("tab","home")
+    icon, title, sub = PAGE_META.get(tab, ("🍛","Rasoi",""))
+    member = st.session_state.get("member","")
+    st.markdown(f"""
+    <div class="top-bar">
+        <div>
+            <div class="top-bar-title">{icon} {title}</div>
+            <div class="top-bar-sub">{sub}</div>
+        </div>
+        <div class="top-bar-user">👤 {member}</div>
+    </div>""", unsafe_allow_html=True)
 
-    pantry = get_pantry()
-    sync_shopping()
+
+# ─────────────────────────────────────
+#  BOTTOM NAV  — pure Streamlit buttons
+# ─────────────────────────────────────
+def bottom_nav():
+    cur = st.session_state.get("tab","home")
+
+    # Inject a wrapper div so we can CSS-target it
+    st.markdown('<div class="nav-wrapper" id="bottom-nav">', unsafe_allow_html=True)
+    cols = st.columns(len(NAV))
+    for i, (key, icon, label) in enumerate(NAV):
+        with cols[i]:
+            # Show active state with a marker in the label
+            if cur == key:
+                btn_label = f"{icon}\n**{label}**\n·"
+            else:
+                btn_label = f"{icon}\n{label}"
+            if st.button(btn_label, key=f"nav_{key}", use_container_width=True):
+                st.session_state.tab = key
+                st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Extra CSS to highlight active button by index
+    active_idx = [i for i,(k,_,_) in enumerate(NAV) if k == cur]
+    if active_idx:
+        n = active_idx[0] + 1
+        st.markdown(f"""
+        <style>
+        #bottom-nav [data-testid="column"]:nth-child({n}) .stButton > button {{
+            color: #3D2DB5 !important;
+            font-weight: 700 !important;
+            background: #EEECFF !important;
+            border-radius: 12px !important;
+        }}
+        </style>""", unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────
+#  LOGIN
+# ─────────────────────────────────────
+def page_login():
+    st.markdown("""
+    <div style="text-align:center;padding:40px 0 20px">
+        <div style="font-size:60px">🍛</div>
+        <div style="font-size:24px;font-weight:700;color:#3D2DB5;margin:10px 0 4px">Rasoi Manager</div>
+        <div style="color:#7B6F8A;font-size:14px">Your Indian kitchen pantry</div>
+    </div>""", unsafe_allow_html=True)
+
+    st.markdown('<div class="login-wrap">', unsafe_allow_html=True)
+    hh     = st.selectbox("🏠 Household", list(HOUSEHOLDS.keys()))
+    member = st.selectbox("👤 Who are you?", MEMBERS.get(hh, ["User"]))
+    pwd    = st.text_input("🔑 Password", type="password", placeholder="Enter password")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("Sign In", use_container_width=True):
+            if pwd == HOUSEHOLDS[hh]["password"]: do_login(hh, member)
+            else: st.error("Wrong password.")
+    with c2:
+        if st.button("Guest", use_container_width=True, type="secondary"):
+            do_login("👤 Guest", "Guest User")
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center;margin-top:14px;color:#AAA;font-size:12px">'
+                'Demo: kumar123 · sharma123 · verma123 · guest</div>', unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────
+#  HOME
+# ─────────────────────────────────────
+def page_home():
+    pantry = st.session_state.pantry
+    sync_shop()
     low = [i for i in pantry if is_low(i)]
-    cats_used = len(set(i["cat"] for i in pantry))
-    shop_count = len(st.session_state.shopping)
 
-    # ── Stat cards ──
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("📦 Total Items", len(pantry))
-    c2.metric("⚠️ Low Stock", len(low))
-    c3.metric("🗂️ Categories", cats_used)
-    c4.metric("🛒 Shopping List", shop_count)
+    st.markdown(f"""
+    <div class="stat-grid">
+        <div class="stat-card" style="background:#EEECFF">
+            <div class="stat-lbl" style="color:#3D2DB5">Total items</div>
+            <div class="stat-val" style="color:#3D2DB5">{len(pantry)}</div>
+        </div>
+        <div class="stat-card" style="background:#FFF0E8">
+            <div class="stat-lbl" style="color:#B84800">Low stock</div>
+            <div class="stat-val" style="color:#B84800">{len(low)}</div>
+        </div>
+        <div class="stat-card" style="background:#E3F8F2">
+            <div class="stat-lbl" style="color:#085041">Categories</div>
+            <div class="stat-val" style="color:#085041">{len(set(i["cat"] for i in pantry))}</div>
+        </div>
+        <div class="stat-card" style="background:#FCE4EC">
+            <div class="stat-lbl" style="color:#880E4F">Shopping</div>
+            <div class="stat-val" style="color:#880E4F">{len(st.session_state.shopping)}</div>
+        </div>
+    </div>""", unsafe_allow_html=True)
 
-    st.markdown("---")
+    if low:
+        st.markdown('<div class="sec-title">⚠️ Needs restocking</div>', unsafe_allow_html=True)
+        for item in low[:4]:
+            cat = get_cat(item["cat"])
+            pct = min(100, int((item["qty"]/(item["thresh"]*4))*100))
+            by  = item.get("added_by","")
+            st.markdown(f"""<div class="alert-card">
+                {cat['emoji']} <strong>{item['name']}</strong>
+                <span class="badge badge-low">Low</span><br>
+                <span style="color:#7B6F8A;font-size:12px">{item['qty']} {item['unit']} left
+                {f'· {by}' if by else ''}</span>
+            </div>""", unsafe_allow_html=True)
+            st.progress(max(pct,4)/100)
+        if len(low) > 4:
+            if st.button(f"See all {len(low)} low items →", type="secondary"):
+                st.session_state.tab = "pantry"; st.rerun()
+    else:
+        st.success("✅ Pantry is fully stocked!")
 
-    col_left, col_right = st.columns([1.2, 1])
+    st.markdown('<div class="sec-title">⏱️ Recently added</div>', unsafe_allow_html=True)
+    for item in sorted(pantry, key=lambda x: x.get("added",""), reverse=True)[:5]:
+        cat   = get_cat(item["cat"])
+        color = CATEGORY_COLORS.get(item["cat"],"#F5F5F5")
+        by    = item.get("added_by","")
+        c1, c2 = st.columns([0.5, 5])
+        with c1:
+            st.markdown(f'<div class="cat-icon" style="background:{color}">{cat["emoji"]}</div>',
+                        unsafe_allow_html=True)
+        with c2:
+            st.markdown(f"**{item['name']}** — {item['qty']} {item['unit']}")
+            st.caption(f"{cat['label']}{f' · {by}' if by else ''}")
 
-    with col_left:
-        # ── Low stock alerts ──
-        st.markdown('<div class="sec-title">⚠️ Needs Restocking</div>', unsafe_allow_html=True)
-        if not low:
-            st.success("✅ Your pantry is fully stocked!")
-        else:
-            for item in low[:6]:
-                cat = get_cat_info(item["cat"])
-                pct = min(100, int((item["qty"] / (item["thresh"] * 4)) * 100))
-                st.markdown(f"""
-                <div class="alert-box">
-                    <span style="font-size:20px">{cat['emoji']}</span>
-                    <div style="flex:1">
-                        <strong>{item['name']}</strong> is running low &nbsp;
-                        <span class="badge badge-low">Low stock</span><br>
-                        <span style="color:#7B6F8A;font-size:12px">{cat['label']} · {item['qty']} {item['unit']} left</span>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                st.progress(max(pct, 5) / 100)
-
-            if len(low) > 6:
-                st.info(f"+ {len(low) - 6} more items need restocking. Go to Pantry →")
-
-    with col_right:
-        # ── Category breakdown ──
-        st.markdown('<div class="sec-title">🗂️ Category Breakdown</div>', unsafe_allow_html=True)
-        from collections import Counter
-        cat_counts = Counter(i["cat"] for i in pantry)
-        for cat in CATEGORIES:
-            if cat["id"] in cat_counts:
-                count = cat_counts[cat["id"]]
-                low_in_cat = sum(1 for i in pantry if i["cat"] == cat["id"] and is_low(i))
-                col_a, col_b = st.columns([3, 1])
-                col_a.markdown(f"{cat['emoji']} **{cat['label']}** — {count} items"
-                               + (f" ⚠️ {low_in_cat} low" if low_in_cat else ""))
-                col_b.markdown(f"")
-
-        st.markdown("---")
-        # ── Quick add from recent ──
-        st.markdown('<div class="sec-title">⏱️ Recently Added</div>', unsafe_allow_html=True)
-        recent = sorted(pantry, key=lambda x: x.get("added", ""), reverse=True)[:5]
-        for item in recent:
-            cat = get_cat_info(item["cat"])
-            st.markdown(f"{cat['emoji']} **{item['name']}** — {item['qty']} {item['unit']}")
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("🚪 Sign out", type="secondary"):
+        for k in list(st.session_state.keys()): del st.session_state[k]
+        st.rerun()
 
 
-# ─────────────────────────────────────────────
-#  PANTRY PAGE
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────
+#  PANTRY
+# ─────────────────────────────────────
 def page_pantry():
-    st.markdown("# 📦 Pantry")
+    pantry = st.session_state.pantry
+    search  = st.text_input("🔍 Search", placeholder="Rice, Dal, Ghee...", label_visibility="collapsed")
+    opts    = ["All"] + [f"{c['emoji']} {c['label']}" for c in CATEGORIES if any(i["cat"]==c["id"] for i in pantry)]
+    sel_cat = st.selectbox("Category", opts, label_visibility="collapsed")
+    show_low = st.checkbox("⚠️ Low stock only")
 
-    pantry = get_pantry()
-
-    # ── Filters ──
-    col_search, col_cat, col_filter = st.columns([2, 1.5, 1])
-    with col_search:
-        search = st.text_input("🔍 Search items", placeholder="e.g. Dal, Rice, Ghee...", label_visibility="collapsed")
-    with col_cat:
-        cat_options = ["All Categories"] + [f"{c['emoji']} {c['label']}" for c in CATEGORIES if any(i["cat"] == c["id"] for i in pantry)]
-        selected_cat = st.selectbox("Category", cat_options, label_visibility="collapsed")
-    with col_filter:
-        show_low = st.checkbox("⚠️ Low stock only")
-
-    # ── Apply filters ──
     filtered = pantry
-    if search:
-        filtered = [i for i in filtered if search.lower() in i["name"].lower()]
-    if selected_cat != "All Categories":
-        cat_id = next((c["id"] for c in CATEGORIES if f"{c['emoji']} {c['label']}" == selected_cat), None)
-        if cat_id:
-            filtered = [i for i in filtered if i["cat"] == cat_id]
-    if show_low:
-        filtered = [i for i in filtered if is_low(i)]
+    if search:   filtered = [i for i in filtered if search.lower() in i["name"].lower()]
+    if sel_cat != "All":
+        cid = next((c["id"] for c in CATEGORIES if f"{c['emoji']} {c['label']}"==sel_cat),None)
+        if cid: filtered = [i for i in filtered if i["cat"]==cid]
+    if show_low: filtered = [i for i in filtered if is_low(i)]
 
-    st.markdown(f"*Showing {len(filtered)} of {len(pantry)} items*")
+    st.caption(f"{len(filtered)} of {len(pantry)} items")
     st.markdown("---")
+    if not filtered: st.info("No items. Tap ➕ to add."); return
 
-    if not filtered:
-        st.info("No items found. Try adjusting your filters or add items via ➕ Add Item.")
-        return
-
-    # ── Item list ──
     for item in filtered:
-        cat = get_cat_info(item["cat"])
-        low = is_low(item)
-        pct = min(100, int((item["qty"] / (item["thresh"] * 4)) * 100))
-        color = CATEGORY_COLORS.get(item["cat"], "#F5F5F5")
+        cat   = get_cat(item["cat"])
+        low   = is_low(item)
+        pct   = min(100, int((item["qty"]/(item["thresh"]*4))*100))
+        color = CATEGORY_COLORS.get(item["cat"],"#F5F5F5")
+        by    = item.get("added_by","")
 
-        with st.container():
-            col1, col2, col3, col4 = st.columns([0.4, 3, 2, 1.5])
+        ci, cinfo, cqty = st.columns([0.55, 3, 2.2])
+        with ci:
+            st.markdown(f'<div class="cat-icon" style="background:{color};margin-top:6px">'
+                        f'{cat["emoji"]}</div>', unsafe_allow_html=True)
+        with cinfo:
+            low_b = ' <span class="badge badge-low">Low</span>' if low else ""
+            st.markdown(f"**{item['name']}**{low_b}", unsafe_allow_html=True)
+            st.caption(f"{cat['label']}{f' · {by}' if by else ''}")
+            st.progress(max(pct,3)/100)
+        with cqty:
+            qa, qb, qc = st.columns([1,1.4,1])
+            with qa:
+                if st.button("−", key=f"d_{item['id']}"):
+                    item["qty"] = max(0, round(item["qty"]-1, 2))
+                    sync_shop(); save_pantry(); st.rerun()
+            with qb:
+                st.markdown(f'<div style="text-align:center;padding-top:5px">'
+                            f'<strong>{item["qty"]}</strong><br>'
+                            f'<span style="font-size:10px;color:#AAA">{item["unit"]}</span></div>',
+                            unsafe_allow_html=True)
+            with qc:
+                if st.button("+", key=f"i_{item['id']}"):
+                    item["qty"] = round(item["qty"]+1, 2)
+                    sync_shop(); save_pantry(); st.rerun()
 
-            with col1:
-                st.markdown(f'<div style="background:{color};border-radius:10px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:22px;margin-top:4px">{cat["emoji"]}</div>', unsafe_allow_html=True)
-
-            with col2:
-                low_badge = '<span class="badge badge-low">Low stock</span>' if low else ""
-                st.markdown(f"**{item['name']}** {low_badge}", unsafe_allow_html=True)
-                st.markdown(f'<span style="color:#7B6F8A;font-size:12px">{cat["label"]}</span>', unsafe_allow_html=True)
-                st.progress(max(pct, 3) / 100)
-
-            with col3:
-                qcol1, qcol2, qcol3 = st.columns([1, 1.2, 1])
-                with qcol1:
-                    if st.button("−", key=f"dec_{item['id']}"):
-                        item["qty"] = max(0, round(item["qty"] - 1, 2))
-                        sync_shopping()
-                        st.rerun()
-                with qcol2:
-                    st.markdown(f'<div style="text-align:center;padding-top:6px"><strong style="font-size:16px">{item["qty"]}</strong><br><span style="font-size:11px;color:#7B6F8A">{item["unit"]}</span></div>', unsafe_allow_html=True)
-                with qcol3:
-                    if st.button("+", key=f"inc_{item['id']}"):
-                        item["qty"] = round(item["qty"] + 1, 2)
-                        sync_shopping()
-                        st.rerun()
-
-            with col4:
-                if st.button("🗑 Remove", key=f"del_{item['id']}"):
-                    st.session_state.pantry = [i for i in st.session_state.pantry if i["id"] != item["id"]]
-                    st.rerun()
-
-            st.markdown('<hr style="margin:6px 0;border:none;border-top:1px solid rgba(100,60,180,0.08)">', unsafe_allow_html=True)
+        if st.button("🗑 Remove", key=f"del_{item['id']}", type="secondary"):
+            st.session_state.pantry = [x for x in st.session_state.pantry if x["id"]!=item["id"]]
+            save_pantry(); st.rerun()
+        st.markdown('<hr style="margin:4px 0;border:none;border-top:1px solid #F0ECFF">', unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────
-#  SHOPPING LIST PAGE
-# ─────────────────────────────────────────────
-def page_shopping():
-    st.markdown("# 🛒 Shopping List")
-    sync_shopping()
+# ─────────────────────────────────────
+#  SHOPPING
+# ─────────────────────────────────────
+def page_shop():
+    sync_shop()
     shop = st.session_state.shopping
-
     done = sum(1 for s in shop if s["checked"])
-    st.markdown(f"*{done}/{len(shop)} items done*")
+    st.caption(f"{done}/{len(shop)} done")
 
-    col_add, col_clear, col_refresh = st.columns([2, 1, 1])
-    with col_add:
-        manual_name = st.text_input("Add item manually", placeholder="Type item name and press Enter", label_visibility="collapsed")
-        if manual_name:
-            st.session_state.shopping.append({
-                "id": str(uuid.uuid4()),
-                "name": manual_name,
-                "cat": "other",
-                "auto": False,
-                "checked": False,
-            })
-            st.rerun()
-    with col_clear:
-        if st.button("✓ Clear done"):
+    name = st.text_input("Add item", placeholder="Type and press Enter", label_visibility="collapsed")
+    if name:
+        shop.append({"id":str(uuid.uuid4()),"name":name,"cat":"other",
+                     "auto":False,"checked":False,"added_by":st.session_state.member})
+        save_shopping(); st.rerun()
+
+    c1,c2 = st.columns(2)
+    with c1:
+        if st.button("✓ Clear done", use_container_width=True, type="secondary"):
             st.session_state.shopping = [s for s in shop if not s["checked"]]
-            st.rerun()
-    with col_refresh:
-        if st.button("↺ Refresh"):
-            sync_shopping()
-            st.rerun()
+            save_shopping(); st.rerun()
+    with c2:
+        if st.button("↺ Refresh", use_container_width=True, type="secondary"):
+            sync_shop(); st.rerun()
 
-    st.markdown("---")
+    if not shop: st.info("🛒 Empty! Low stock items appear here automatically."); return
 
-    if not shop:
-        st.info("🛒 Your list is empty! Low stock items appear here automatically. Add items manually above.")
-        return
+    for title, items in [("🤖 Auto-suggested",[s for s in shop if s.get("auto")]),
+                         ("✍️ Added manually", [s for s in shop if not s.get("auto")])]:
+        if items:
+            st.markdown(f'<div class="sec-title">{title}</div>', unsafe_allow_html=True)
+            for item in items: _shop_row(item)
 
-    auto_items = [s for s in shop if s.get("auto")]
-    manual_items = [s for s in shop if not s.get("auto")]
-
-    if auto_items:
-        st.markdown('<div class="sec-title">🤖 Auto-suggested (Low Stock)</div>', unsafe_allow_html=True)
-        for item in auto_items:
-            render_shop_item(item)
-
-    if manual_items:
-        st.markdown('<div class="sec-title">✍️ Added by You</div>', unsafe_allow_html=True)
-        for item in manual_items:
-            render_shop_item(item)
-
-
-def render_shop_item(item):
-    cat = get_cat_info(item["cat"])
-    col1, col2, col3 = st.columns([0.3, 4, 1])
-    with col1:
-        checked = st.checkbox("", value=item["checked"], key=f"chk_{item['id']}")
-        if checked != item["checked"]:
-            item["checked"] = checked
-            st.rerun()
-    with col2:
-        style = "text-decoration:line-through;color:#AAA" if item["checked"] else "color:#1E1040"
-        auto_badge = '<span class="badge badge-low" style="font-size:10px">low stock</span>' if item.get("auto") else ""
-        st.markdown(f'<span style="{style};font-weight:600">{item["name"]}</span> {auto_badge}<br><span style="color:#7B6F8A;font-size:12px">{cat["emoji"]} {cat["label"]}</span>', unsafe_allow_html=True)
-    with col3:
+def _shop_row(item):
+    cat = get_cat(item["cat"])
+    c1,c2,c3 = st.columns([0.4,4,0.6])
+    with c1:
+        chk = st.checkbox("", value=item["checked"], key=f"chk_{item['id']}")
+        if chk != item["checked"]: item["checked"]=chk; save_shopping(); st.rerun()
+    with c2:
+        s = "text-decoration:line-through;color:#BBB" if item["checked"] else "color:#1E1040"
+        ab = '<span class="badge badge-low" style="font-size:10px">low</span>' if item.get("auto") else ""
+        by = item.get("added_by","")
+        st.markdown(f'<span style="{s};font-weight:600;font-size:14px">{item["name"]}</span> {ab}<br>'
+                    f'<span style="color:#AAA;font-size:11px">{cat["emoji"]} {cat["label"]}'
+                    f'{f" · {by}" if by else ""}</span>', unsafe_allow_html=True)
+    with c3:
         if st.button("✕", key=f"rm_{item['id']}"):
-            st.session_state.shopping = [s for s in st.session_state.shopping if s["id"] != item["id"]]
-            st.rerun()
-    st.markdown('<hr style="margin:4px 0;border:none;border-top:1px solid rgba(100,60,180,0.07)">', unsafe_allow_html=True)
+            st.session_state.shopping=[s for s in st.session_state.shopping if s["id"]!=item["id"]]
+            save_shopping(); st.rerun()
+    st.markdown('<hr style="margin:4px 0;border:none;border-top:1px solid #F0ECFF">', unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────
-#  RECIPES PAGE
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────
+#  RECIPES
+# ─────────────────────────────────────
 def page_recipes():
-    st.markdown("# 🍽️ Recipe Ideas")
-    st.markdown("*Recipes scored based on what's in your pantry right now*")
-
-    pantry_names = {i["name"] for i in get_pantry()}
-
-    # Score recipes
+    pantry_names = {i["name"] for i in st.session_state.pantry}
     scored = []
     for r in RECIPES:
-        have = [n for n in r["needs"] if n in pantry_names]
-        miss = [n for n in r["needs"] if n not in pantry_names]
-        score = int((len(have) / len(r["needs"])) * 100)
-        scored.append({**r, "have": have, "miss": miss, "score": score})
-    scored.sort(key=lambda x: x["score"], reverse=True)
+        have  = [n for n in r["needs"] if n in pantry_names]
+        miss  = [n for n in r["needs"] if n not in pantry_names]
+        scored.append({**r,"have":have,"miss":miss,"score":int(len(have)/len(r["needs"])*100)})
+    scored.sort(key=lambda x:x["score"], reverse=True)
 
-    # ── Filters ──
-    col_search, col_region, col_diff = st.columns(3)
-    with col_search:
-        search = st.text_input("🔍 Search recipes", placeholder="e.g. Dal, Biryani...", label_visibility="collapsed")
-    with col_region:
-        regions = ["All Regions"] + sorted(set(r["region"] for r in RECIPES))
-        region = st.selectbox("Region", regions, label_visibility="collapsed")
-    with col_diff:
-        diffs = ["All Difficulties", "Easy", "Medium", "Hard"]
-        diff = st.selectbox("Difficulty", diffs, label_visibility="collapsed")
+    search = st.text_input("🔍 Search recipes", placeholder="Dal, Upma...", label_visibility="collapsed")
+    c1,c2  = st.columns(2)
+    with c1: region = st.selectbox("Region",["All Regions"]+sorted({r["region"] for r in RECIPES}), label_visibility="collapsed")
+    with c2: diff   = st.selectbox("Level", ["All","Easy","Medium","Hard"], label_visibility="collapsed")
 
-    filtered = scored
-    if search:
-        filtered = [r for r in filtered if search.lower() in r["name"].lower()]
-    if region != "All Regions":
-        filtered = [r for r in filtered if r["region"] == region]
-    if diff != "All Difficulties":
-        filtered = [r for r in filtered if r["difficulty"] == diff]
+    f = [r for r in scored
+         if (not search or search.lower() in r["name"].lower())
+         and (region=="All Regions" or r["region"]==region)
+         and (diff=="All" or r["difficulty"]==diff)]
 
     st.markdown("---")
+    for title,lst in [("✅ Ready to cook",[r for r in f if r["score"]==100]),
+                      ("🛒 Almost there", [r for r in f if 50<=r["score"]<100]),
+                      ("📦 Need more",    [r for r in f if r["score"]<50])]:
+        if lst:
+            st.markdown(f'<div class="sec-title">{title}</div>', unsafe_allow_html=True)
+            for r in lst: _recipe_card(r)
+    if not f: st.info("No recipes found. Add more pantry items!")
 
-    can_make = [r for r in filtered if r["score"] == 100]
-    almost   = [r for r in filtered if 50 <= r["score"] < 100]
-    need_more= [r for r in filtered if r["score"] < 50]
-
-    def render_section(title, recipes):
-        if not recipes:
-            return
-        st.markdown(f'<div class="sec-title">{title}</div>', unsafe_allow_html=True)
-        for recipe in recipes:
-            render_recipe_card(recipe)
-
-    render_section("✅ Ready to cook now", can_make)
-    render_section("🛒 Almost there", almost)
-    render_section("📦 Need more ingredients", need_more)
-
-    if not filtered:
-        st.info("No recipes found. Try adjusting your filters or add more items to your pantry.")
-
-
-def render_recipe_card(recipe):
-    diff_class = {"Easy": "badge-easy", "Medium": "badge-medium", "Hard": "badge-hard"}.get(recipe["difficulty"], "badge-easy")
-    score_color = "#0D9E6E" if recipe["score"] == 100 else "#D4A017" if recipe["score"] >= 50 else "#E8600A"
-
-    with st.expander(f"{recipe['emoji']} **{recipe['name']}** — {recipe['score']}% match · {recipe['time']} · {recipe['region']}"):
-        col1, col2 = st.columns([1, 2])
-
-        with col1:
-            st.markdown(f'<span class="badge {diff_class}">{recipe["difficulty"]}</span>&nbsp;&nbsp;⏱ {recipe["time"]}&nbsp;&nbsp;👥 {recipe["servings"]} servings', unsafe_allow_html=True)
-            st.markdown(f"**Pantry match:** {recipe['score']}%")
-            st.progress(recipe["score"] / 100)
-
-            st.markdown("**You have:**")
-            for ing in recipe["have"]:
-                st.markdown(f'<span class="badge badge-have">✅ {ing}</span> ', unsafe_allow_html=True)
-
-            if recipe["miss"]:
-                st.markdown("**You need:**")
-                for ing in recipe["miss"]:
-                    st.markdown(f'<span class="badge badge-miss">🛒 {ing}</span> ', unsafe_allow_html=True)
-
-                if st.button(f"Add missing to shopping list", key=f"add_miss_{recipe['id']}"):
-                    for ing in recipe["miss"]:
-                        already = any(s["name"] == ing for s in st.session_state.shopping)
-                        if not already:
-                            st.session_state.shopping.append({
-                                "id": str(uuid.uuid4()),
-                                "name": ing,
-                                "cat": "other",
-                                "auto": False,
-                                "checked": False,
-                            })
-                    st.success(f"Added {len(recipe['miss'])} items to shopping list!")
-
-        with col2:
-            st.markdown("**Steps:**")
-            for i, step in enumerate(recipe["steps"], 1):
-                st.markdown(f"**{i}.** {step}")
+def _recipe_card(r):
+    dc = {"Easy":"badge-easy","Medium":"badge-medium","Hard":"badge-hard"}.get(r["difficulty"],"badge-easy")
+    with st.expander(f"{r['emoji']} **{r['name']}** — {r['score']}% · {r['time']}"):
+        st.markdown(f'<span class="badge {dc}">{r["difficulty"]}</span> ⏱ {r["time"]} 👥 {r["servings"]} 📍 {r["region"]}', unsafe_allow_html=True)
+        st.progress(r["score"]/100)
+        have_html = " ".join(f'<span class="badge badge-have">✅ {i}</span>' for i in r["have"])
+        st.markdown(have_html or "*None in pantry*", unsafe_allow_html=True)
+        if r["miss"]:
+            miss_html = " ".join(f'<span class="badge badge-miss">🛒 {i}</span>' for i in r["miss"])
+            st.markdown(miss_html, unsafe_allow_html=True)
+            if st.button("Add missing to shopping list", key=f"miss_{r['id']}"):
+                for ing in r["miss"]:
+                    if not any(s["name"]==ing for s in st.session_state.shopping):
+                        st.session_state.shopping.append({"id":str(uuid.uuid4()),"name":ing,
+                            "cat":"other","auto":False,"checked":False,"added_by":st.session_state.member})
+                save_shopping(); st.success(f"Added {len(r['miss'])} items!")
+        st.markdown("**Steps:**")
+        for i,step in enumerate(r["steps"],1): st.markdown(f"**{i}.** {step}")
 
 
-# ─────────────────────────────────────────────
-#  ADD ITEM PAGE
-# ─────────────────────────────────────────────
-def page_add_item():
-    st.markdown("# ➕ Add Item to Pantry")
+# ─────────────────────────────────────
+#  ADD ITEM
+# ─────────────────────────────────────
+def page_add():
+    pantry_names = {i["name"] for i in st.session_state.pantry}
+    available    = [s for s in INDIAN_STAPLES if s["name"] not in pantry_names]
 
-    pantry_names = {i["name"] for i in get_pantry()}
-    available_staples = [s for s in INDIAN_STAPLES if s["name"] not in pantry_names]
+    st.markdown('<div class="sec-title">⚡ Quick pick</div>', unsafe_allow_html=True)
+    qp = st.selectbox("Staple", ["— choose —"]+[s["name"] for s in available[:40]], label_visibility="collapsed")
+    qd = next((s for s in available if s["name"]==qp), None) if qp!="— choose —" else None
 
-    # ── Quick pick ──
-    st.markdown('<div class="sec-title">⚡ Quick Pick — Indian Staples</div>', unsafe_allow_html=True)
-    st.markdown("*Click any item to auto-fill the form below:*")
+    st.markdown('<div class="sec-title">📝 Item details</div>', unsafe_allow_html=True)
+    name = st.text_input("Item name *", value=qd["name"] if qd else "", placeholder="e.g. Basmati Rice")
+    cat_labels = [f"{c['emoji']} {c['label']}" for c in CATEGORIES]
+    def_cat    = next((i for i,c in enumerate(CATEGORIES) if c["id"]==qd["cat"]),0) if qd else 0
+    sel_cat    = st.selectbox("Category", cat_labels, index=def_cat)
+    cat_id     = CATEGORIES[cat_labels.index(sel_cat)]["id"]
 
-    staple_names = [s["name"] for s in available_staples[:30]]
-    selected_quick = st.selectbox("Select a staple to quick-fill", ["— choose —"] + staple_names, label_visibility="collapsed")
+    c1,c2 = st.columns(2)
+    with c1:
+        qty  = st.number_input("Quantity", min_value=0.0, value=float(qd["qty"]) if qd else 1.0, step=0.5)
+        unit = st.selectbox("Unit", UNITS, index=UNITS.index(qd["unit"]) if qd and qd["unit"] in UNITS else 0)
+    with c2:
+        thresh = st.number_input("Alert when below", min_value=0.0, value=float(qd["thresh"]) if qd else 1.0, step=0.5)
 
-    quick_data = None
-    if selected_quick != "— choose —":
-        quick_data = next((s for s in available_staples if s["name"] == selected_quick), None)
+    if st.button("✅ Add to Pantry", use_container_width=True):
+        if not name.strip(): st.error("Enter an item name.")
+        else:
+            st.session_state.pantry.insert(0,{"id":str(uuid.uuid4()),"name":name.strip(),
+                "cat":cat_id,"qty":round(qty,2),"unit":unit,"thresh":round(thresh,2),
+                "added":datetime.now().isoformat(),"added_by":st.session_state.member})
+            sync_shop(); save_pantry()
+            st.success(f"✅ **{name}** added!"); st.balloons()
 
-    st.markdown("---")
-    st.markdown('<div class="sec-title">📝 Item Details</div>', unsafe_allow_html=True)
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        default_name = quick_data["name"] if quick_data else ""
-        name = st.text_input("Item name *", value=default_name, placeholder="e.g. Basmati Rice")
-
-        cat_labels = [f"{c['emoji']} {c['label']}" for c in CATEGORIES]
-        default_cat_idx = 0
-        if quick_data:
-            default_cat_idx = next((i for i, c in enumerate(CATEGORIES) if c["id"] == quick_data["cat"]), 0)
-        selected_cat_label = st.selectbox("Category", cat_labels, index=default_cat_idx)
-        selected_cat_id = CATEGORIES[cat_labels.index(selected_cat_label)]["id"]
-
-    with col2:
-        default_qty = float(quick_data["qty"]) if quick_data else 1.0
-        qty = st.number_input("Quantity", min_value=0.0, value=default_qty, step=0.5)
-
-        default_unit_idx = UNITS.index(quick_data["unit"]) if quick_data and quick_data["unit"] in UNITS else 0
-        unit = st.selectbox("Unit", UNITS, index=default_unit_idx)
-
-        default_thresh = float(quick_data["thresh"]) if quick_data else 1.0
-        thresh = st.number_input("Low stock alert when below", min_value=0.0, value=default_thresh, step=0.5)
-
-    st.markdown("")
-    col_btn1, col_btn2, _ = st.columns([1, 1, 3])
-
-    with col_btn1:
-        if st.button("✅ Add to Pantry", use_container_width=True):
-            if not name.strip():
-                st.error("Please enter an item name.")
-            else:
-                new_item = {
-                    "id": str(uuid.uuid4()),
-                    "name": name.strip(),
-                    "cat": selected_cat_id,
-                    "qty": round(qty, 2),
-                    "unit": unit,
-                    "thresh": round(thresh, 2),
-                    "added": datetime.now().isoformat(),
-                }
-                st.session_state.pantry.insert(0, new_item)
-                sync_shopping()
-                st.success(f"✅ **{name}** added to pantry!")
-                st.balloons()
-
-    with col_btn2:
-        if st.button("🔄 Reset Form", use_container_width=True):
-            st.rerun()
-
-    # ── Bulk add section ──
-    st.markdown("---")
-    st.markdown('<div class="sec-title">📋 Bulk Add Common Staples</div>', unsafe_allow_html=True)
-    st.markdown("*Select multiple items to add at once with default quantities:*")
-
-    available_names = [s["name"] for s in available_staples]
-    selected_bulk = st.multiselect("Choose items to add", available_names, placeholder="Select Indian staples...")
-
-    if selected_bulk:
-        st.markdown(f"*{len(selected_bulk)} items selected*")
-        if st.button(f"➕ Add {len(selected_bulk)} Items to Pantry"):
-            added_count = 0
-            for sname in selected_bulk:
-                staple = next((s for s in available_staples if s["name"] == sname), None)
-                if staple:
-                    new_item = {
-                        **staple,
-                        "id": str(uuid.uuid4()),
-                        "added": datetime.now().isoformat(),
-                    }
-                    st.session_state.pantry.insert(0, new_item)
-                    added_count += 1
-            sync_shopping()
-            st.success(f"✅ Added {added_count} items to your pantry!")
-            st.rerun()
+    st.markdown('<div class="sec-title">📋 Bulk add</div>', unsafe_allow_html=True)
+    bulk = st.multiselect("Pick staples", [s["name"] for s in available], placeholder="Select multiple...")
+    if bulk and st.button(f"➕ Add {len(bulk)} items", use_container_width=True):
+        for sname in bulk:
+            s = next((x for x in available if x["name"]==sname),None)
+            if s:
+                st.session_state.pantry.insert(0,{**s,"id":str(uuid.uuid4()),
+                    "added":datetime.now().isoformat(),"added_by":st.session_state.member})
+        sync_shop(); save_pantry()
+        st.success(f"✅ Added {len(bulk)} items!"); st.rerun()
 
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────
 #  MAIN
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────
 def main():
-    init_state()
-    render_sidebar()
+    if not st.session_state.get("logged_in"):
+        page_login()
+        return
 
-    page = st.session_state.page
+    top_bar()
 
-    if page == "🏠 Dashboard":
-        page_dashboard()
-    elif page == "📦 Pantry":
-        page_pantry()
-    elif page == "🛒 Shopping List":
-        page_shopping()
-    elif page == "🍽️ Recipes":
-        page_recipes()
-    elif page == "➕ Add Item":
-        page_add_item()
+    tab = st.session_state.get("tab","home")
+    if   tab == "home":    page_home()
+    elif tab == "pantry":  page_pantry()
+    elif tab == "shop":    page_shop()
+    elif tab == "recipes": page_recipes()
+    elif tab == "add":     page_add()
 
+    bottom_nav()
 
 if __name__ == "__main__":
     main()
